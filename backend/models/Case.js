@@ -1,12 +1,17 @@
 const mongoose = require('mongoose');
 
-const CASE_STATUSES = ['submitted', 'assigned', 'visited', 'reviewed', 'treated', 'followup', 'closed'];
+const CASE_STATUSES = ['DRAFT', 'NEW', 'ASSIGNED', 'DIAGNOSED', 'FOLLOWUP', 'ESCALATED', 'SPECIALIST_REVIEW', 'RESOLVED', 'CLOSED'];
 
 const caseSchema = new mongoose.Schema({
-    caseId: { type: String, unique: true }, // auto-generated e.g. RHC-20240001
+    caseId: { type: String, unique: true }, // auto-generated e.g. RHC-2024-0001
+
     patient: { type: mongoose.Schema.Types.ObjectId, ref: 'Patient', required: true },
     reportedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     village: { type: mongoose.Schema.Types.ObjectId, ref: 'Village' },
+    villageName: { type: String },
+    pincode: { type: String },
+    district: { type: String },
+    state: { type: String },
 
     // Complaint
     chiefComplaint: { type: String, required: true },
@@ -16,12 +21,14 @@ const caseSchema = new mongoose.Schema({
     notes: { type: String },
 
     // Assignment
-    assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // junior doctor
+    assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // junior/senior doctor
+    assignedDoctorRole: { type: String, enum: ['junior_doctor', 'senior_doctor'] },
     assignedAt: { type: Date },
     assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    createdByHelperId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 
     // Status workflow
-    status: { type: String, enum: CASE_STATUSES, default: 'submitted' },
+    status: { type: String, enum: CASE_STATUSES, default: 'NEW' },
     statusHistory: [{
         status: { type: String, enum: CASE_STATUSES },
         changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -29,12 +36,19 @@ const caseSchema = new mongoose.Schema({
         note: { type: String },
     }],
 
-    // Senior review requested
+    caseType: { type: String, enum: ['normal', 'serious'], default: 'normal' },
+    // FIXED: removed duplicate `priority` — use `severity` consistently
+    priority: { type: String, enum: ['low', 'medium', 'high', 'critical'], default: 'medium' },
+    tags: [{ type: String }],
+
+    // Senior review
     seniorReviewRequested: { type: Boolean, default: false },
     seniorReviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 
-    priority: { type: Boolean, default: false },
-    tags: [{ type: String }],
+    // Resolution
+    resolvedAt: { type: Date },
+    closedAt: { type: Date },
+    closureNote: { type: String },
 }, { timestamps: true });
 
 // Auto-generate caseId
@@ -48,6 +62,6 @@ caseSchema.pre('save', async function (next) {
 });
 
 caseSchema.index({ status: 1, village: 1, patient: 1, assignedTo: 1 });
-caseSchema.index({ chiefComplaint: 'text', symptoms: 'text' });
+caseSchema.index({ chiefComplaint: 'text' });
 
 module.exports = mongoose.model('Case', caseSchema);

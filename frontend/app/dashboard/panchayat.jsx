@@ -8,29 +8,14 @@ import {
     View, Text, StyleSheet, ScrollView,
     ActivityIndicator, RefreshControl, Platform, Pressable
 } from 'react-native';
-import { Feather, Ionicons } from '@expo/vector-icons';
+import { Feather, Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { useAuth } from '../../context/AuthContext';
 import { analyticsService, caseService } from '../../services/api';
 import { StatCardSkeleton, SkeletonBox } from '../../components/ui/Skeleton';
 
-// ─── DESIGN TOKENS ────────────────────────────────────────────────────────────
-const CLR = {
-    primary: '#2563EB',
-    bg: '#F8FAFC',
-    card: '#FFFFFF',
-    textPri: '#111827',
-    textSec: '#6B7280',
-    border: '#E5E7EB',
-    sidebar: '#0F172A',
-    accent: '#8B5CF6',
-};
+import { CLR, TY, SP, SHADOW } from '../../constants/DesignTokens';
 
-const shadow = (lvl = 'sm') => {
-    const isWeb = Platform.OS === 'web';
-    if (lvl === 'md') return isWeb ? { boxShadow: '0 4px 12px rgba(0,0,0,0.08)' } : { elevation: 4, shadowOpacity: 0.1, shadowRadius: 10 };
-    return isWeb ? { boxShadow: '0 1px 3px rgba(0,0,0,0.1)' } : { elevation: 2, shadowOpacity: 0.05, shadowRadius: 3 };
-};
 
 const WEB = Platform.OS === 'web';
 
@@ -184,7 +169,10 @@ export default function PanchayatDashboard() {
         <View style={styles.root}>
             <View style={styles.sidebar}>
                 <View style={styles.logoArea}>
-                    <View style={styles.logoIcon}><Ionicons name="bar-chart" size={20} color="#fff" /></View>
+                    <View style={[styles.logoIcon, { backgroundColor: 'transparent' }]}>
+                        <FontAwesome5 name="heart" size={28} color="#000" style={{ position: 'absolute' }} />
+                        <FontAwesome5 name="heartbeat" size={28} color="#6366F1" />
+                    </View>
                     <View>
                         <Text style={styles.logoText}>Rural Health</Text>
                         <Text style={styles.logoSub}>PANCHAYAT</Text>
@@ -258,13 +246,13 @@ const styles = StyleSheet.create({
     pageSubtitle: { fontSize: 14, color: CLR.textSec, marginTop: 4 },
 
     statsGrid: { flexDirection: 'row', gap: 16 },
-    statCard: { flex: 1, backgroundColor: '#fff', padding: 20, borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', ...shadow() },
+    statCard: { flex: 1, backgroundColor: '#fff', padding: 20, borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', ...SHADOW.sm },
     statLabel: { fontSize: 14, color: CLR.textSec, fontWeight: '500' },
     statValue: { fontSize: 24, fontWeight: '700', color: CLR.textPri, marginTop: 4 },
     statIcon: { width: 44, height: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
 
     analyticsSection: { flexDirection: 'row', gap: 20 },
-    card: { backgroundColor: '#fff', borderRadius: 20, padding: 24, borderWidth: 1, borderColor: '#E5E7EB', ...shadow('md') },
+    card: { backgroundColor: '#fff', borderRadius: 20, padding: 24, borderWidth: 1, borderColor: '#E5E7EB', ...SHADOW.md },
     cardTitle: { fontSize: 16, fontWeight: '700', color: CLR.textPri, marginBottom: 20 },
 
     chartContainer: { gap: 18 },

@@ -14,13 +14,16 @@ export const ROLES = {
 export const ROLE_LABELS = {
     patient: 'Patient',
     helpline_operator: 'Helpline Operator',
+    helper_doctor: 'Helper Doctor',
     junior_doctor: 'Junior Doctor',
     senior_doctor: 'Senior Doctor',
     panchayat_officer: 'Panchayat Health Officer',
     admin: 'Administrator',
 };
 
-export const ROLE_LIST = Object.entries(ROLE_LABELS).map(([value, label]) => ({ value, label }));
+export const ROLE_LIST = Object.entries(ROLE_LABELS)
+    .filter(([value]) => value !== 'helpline_operator' && value !== 'panchayat_officer')
+    .map(([value, label]) => ({ value, label }));
 
 export const CASE_STATUS = {
     SUBMITTED: 'submitted',

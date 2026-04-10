@@ -8,14 +8,14 @@ const diagnosisSchema = new mongoose.Schema({
 
     finalDiagnosis: { type: String, required: true },
     icdCode: { type: String }, // ICD-10 code
-    severity: { type: String, enum: ['mild', 'moderate', 'severe', 'critical'] },
+    severity: { type: String, enum: ['low', 'medium', 'high', 'critical', 'mild', 'moderate', 'severe'] },
 
     prescription: [{
         medicine: { type: String },
         dosage: { type: String },
         frequency: { type: String },
         duration: { type: String },
-        route: { type: String, enum: ['oral', 'topical', 'injection', 'inhaled', 'other'] },
+        route: { type: String, enum: ['oral', 'topical', 'injection', 'inhaled', 'sublingual', 'intravenous', 'intramuscular', 'rectal', 'other', 'Oral', 'Topical', 'Injection', 'Inhaled', 'Sublingual', 'Intravenous', 'Intramuscular', 'Rectal', 'Other'] },
     }],
 
     testsRequired: [{ type: String }],

@@ -6,7 +6,7 @@ const protect = require('../middleware/auth');
 const authorize = require('../middleware/roles');
 const { createLog } = require('../utils/logger');
 
-const ALLOWED_ROLES = ['admin', 'helpline_operator', 'junior_doctor', 'senior_doctor', 'panchayat_officer'];
+const ALLOWED_ROLES = ['admin', 'helpline_operator', 'helper_doctor', 'junior_doctor', 'senior_doctor'];
 
 // GET /api/patients/me - patient fetches their own record
 router.get('/me', protect, async (req, res, next) => {
@@ -61,7 +61,12 @@ router.post('/', protect, authorize(...ALLOWED_ROLES, 'patient'), [
         const errors = validationResult(req);
         if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
 
-        const patient = await Patient.create({ ...req.body, registeredBy: req.user._id });
+        const newPatientData = { ...req.body, registeredBy: req.user._id };
+        if (req.user.role === 'patient') {
+            newPatientData.user = req.user._id;
+        }
+
+        const patient = await Patient.create(newPatientData);
         await createLog({ actor: req.user, action: 'CREATE_PATIENT', module: 'patients', targetId: patient._id, targetModel: 'Patient', description: `Patient ${patient.name} registered`, ipAddress: req.ip });
         res.status(201).json({ success: true, data: patient });
     } catch (err) { next(err); }

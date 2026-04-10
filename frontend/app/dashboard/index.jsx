@@ -16,6 +16,7 @@ export default function DashboardRouter() {
             case 'helpline_operator': router.replace('/dashboard/helpline'); break;
             case 'junior_doctor': router.replace('/dashboard/junior-doctor'); break;
             case 'senior_doctor': router.replace('/dashboard/senior-doctor'); break;
+            case 'helper_doctor': router.replace('/dashboard/helper-doctor'); break;
             case 'panchayat_officer': router.replace('/dashboard/panchayat'); break;
             case 'admin': router.replace('/dashboard/admin'); break;
             default: router.replace('/auth/login');

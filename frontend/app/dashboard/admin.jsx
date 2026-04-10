@@ -8,29 +8,14 @@ import {
     View, Text, StyleSheet, ScrollView, TextInput,
     ActivityIndicator, RefreshControl, Platform, Pressable
 } from 'react-native';
-import { Feather, Ionicons } from '@expo/vector-icons';
+import { Feather, Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { useAuth } from '../../context/AuthContext';
 import { analyticsService, userService, logService } from '../../services/api';
 import { StatCardSkeleton, CaseRowSkeleton, SkeletonBox } from '../../components/ui/Skeleton';
 
-// ─── DESIGN TOKENS ────────────────────────────────────────────────────────────
-const CLR = {
-    primary: '#2563EB',
-    bg: '#F8FAFC',
-    card: '#FFFFFF',
-    textPri: '#111827',
-    textSec: '#6B7280',
-    border: '#E5E7EB',
-    sidebar: '#0F172A',
-    danger: '#EF4444',
-};
+import { CLR, TY, SP, SHADOW } from '../../constants/DesignTokens';
 
-const shadow = (lvl = 'sm') => {
-    const isWeb = Platform.OS === 'web';
-    if (lvl === 'md') return isWeb ? { boxShadow: '0 4px 12px rgba(0,0,0,0.08)' } : { elevation: 4, shadowOpacity: 0.1, shadowRadius: 10 };
-    return isWeb ? { boxShadow: '0 1px 3px rgba(0,0,0,0.1)' } : { elevation: 2, shadowOpacity: 0.05, shadowRadius: 3 };
-};
 
 const WEB = Platform.OS === 'web';
 const NO_OUTLINE = WEB ? { outlineStyle: 'none' } : {};
@@ -179,7 +164,8 @@ export default function AdminDashboard() {
             setSummary(aRes.data.data);
             setUsers(uRes.data.data || []);
             setLogs(lRes.data.data || []);
-        } catch {
+        } catch (e) {
+            console.error('Admin Load Error:', e.response?.data || e.message || e);
             Toast.show({ type: 'error', text1: 'Error', text2: 'Failed to load system data.' });
         } finally {
             setLoading(false);
@@ -202,22 +188,38 @@ export default function AdminDashboard() {
     return (
         <View style={styles.root}>
             <View style={styles.sidebar}>
-                <View style={styles.logoArea}>
-                    <View style={styles.logoIcon}><Ionicons name="settings" size={20} color="#fff" /></View>
+                <View style={styles.sidebarHeader}>
+                    <View style={styles.logoCircle}>
+                        <FontAwesome5 name="heartbeat" size={24} color="#FFF" />
+                    </View>
                     <View>
-                        <Text style={styles.logoText}>Rural Health</Text>
-                        <Text style={styles.logoSub}>CONTROL PANEL</Text>
+                        <Text style={styles.logoName}>Rural Health</Text>
+                        <Text style={styles.logoTag}>CONTROL PANEL</Text>
                     </View>
                 </View>
-                <Text style={styles.navHeading}>SYSTEM</Text>
-                <SidebarItem icon="grid" label="Overview" active={nav === 'overview'} onPress={() => setNav('overview')} />
-                <SidebarItem icon="users" label="User Management" active={nav === 'users'} onPress={() => setNav('users')} />
-                <SidebarItem icon="list" label="Audit Logs" active={nav === 'logs'} onPress={() => setNav('logs')} />
-                <View style={{ flex: 1 }} />
-                <Btn style={styles.logoutBtn} onPress={logout}>
-                    <Feather name="log-out" size={16} color="#64748B" style={{ marginRight: 8 }} />
-                    <Text style={{ color: '#64748B', fontWeight: '500' }}>Sign Out</Text>
-                </Btn>
+
+                <View style={styles.sidebarContent}>
+                    <Text style={styles.sidebarHeading}>SYSTEM</Text>
+                    <SidebarItem icon="grid" label="Overview" active={nav === 'overview'} onPress={() => setNav('overview')} />
+                    <SidebarItem icon="users" label="User Management" active={nav === 'users'} onPress={() => setNav('users')} />
+                    <SidebarItem icon="list" label="Audit Logs" active={nav === 'logs'} onPress={() => setNav('logs')} />
+                </View>
+
+                <View style={styles.sidebarFooter}>
+                    <View style={styles.sidebarUserCard}>
+                        <View style={styles.userAvatar}>
+                            <Text style={styles.userInitials}>{user?.name?.[0]}</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.userNameSide} numberOfLines={1}>{user?.name}</Text>
+                            <Text style={styles.userRoleSide}>Super Admin</Text>
+                        </View>
+                    </View>
+                    <Btn style={styles.signOutBtn} onPress={logout}>
+                        <Feather name="log-out" size={18} color={CLR.danger} />
+                        <Text style={styles.signOutTxt}>Sign Out</Text>
+                    </Btn>
+                </View>
             </View>
 
             <View style={styles.main}>
@@ -272,21 +274,30 @@ export default function AdminDashboard() {
 
 const styles = StyleSheet.create({
     root: { flex: 1, flexDirection: 'row', backgroundColor: CLR.bg },
-    sidebar: { width: 260, backgroundColor: CLR.sidebar, padding: 18 },
+    sidebar: { width: 280, backgroundColor: CLR.sidebarBg, padding: 24, justifyContent: 'space-between' },
     main: { flex: 1 },
     page: { padding: 24, gap: 24 },
 
-    logoArea: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 32, paddingBottom: 18, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' },
-    logoIcon: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#3B82F6', alignItems: 'center', justifyContent: 'center' },
-    logoText: { fontSize: 18, fontWeight: '700', color: '#fff' },
-    logoSub: { fontSize: 11, color: '#9CA3AF', letterSpacing: 1.5, textTransform: 'uppercase' },
+    sidebarHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 40 },
+    logoCircle: { width: 44, height: 44, borderRadius: 14, backgroundColor: CLR.primary, alignItems: 'center', justifyContent: 'center', ...SHADOW.md },
+    logoName: { color: '#F1F5F9', fontSize: 20, fontWeight: '800', letterSpacing: -0.5 },
+    logoTag: { color: CLR.sidebarText, fontSize: 10, fontWeight: '700', letterSpacing: 1 },
 
-    navHeading: { fontSize: 11, fontWeight: '600', color: '#64748B', letterSpacing: 1.5, marginBottom: 12 },
-    navItem: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 10, gap: 12, marginBottom: 4 },
-    navItemActive: { backgroundColor: CLR.primary },
-    navLabel: { fontSize: 15, fontWeight: '500', color: '#CBD5E1' },
-    navLabelActive: { color: '#fff', fontWeight: '600' },
-    logoutBtn: { flexDirection: 'row', alignItems: 'center', padding: 12 },
+    sidebarContent: { flex: 1 },
+    sidebarHeading: { color: '#64748B', fontSize: 11, fontWeight: '700', letterSpacing: 1.5, marginBottom: 16, marginTop: 16 },
+    navItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13, paddingHorizontal: 16, borderRadius: 12, gap: 12, marginBottom: 4 },
+    navItemActive: { backgroundColor: CLR.sidebarActive },
+    navLabel: { color: CLR.sidebarText, fontSize: 14, fontWeight: '600' },
+    navLabelActive: { color: CLR.sidebarTextActive },
+
+    sidebarFooter: { marginTop: 'auto', gap: 12, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.07)', paddingTop: 16 },
+    sidebarUserCard: { flexDirection: 'row', alignItems: 'center', padding: 10, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12, gap: 12 },
+    userAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: CLR.primary, alignItems: 'center', justifyContent: 'center' },
+    userInitials: { color: '#fff', fontSize: 14, fontWeight: '700' },
+    userNameSide: { color: '#F1F5F9', fontSize: 13, fontWeight: '700' },
+    userRoleSide: { color: 'rgba(255,255,255,0.6)', fontSize: 12, fontWeight: '600' },
+    signOutBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, gap: 10, borderRadius: 10 },
+    signOutTxt: { color: '#F87171', fontSize: 13, fontWeight: '600' },
 
     topbar: { height: 64, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#E5E7EB', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24 },
     userBadge: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -298,12 +309,12 @@ const styles = StyleSheet.create({
     pageSubtitle: { fontSize: 14, color: CLR.textSec, marginTop: 4 },
 
     statsGrid: { flexDirection: 'row', gap: 16 },
-    statCard: { flex: 1, backgroundColor: '#fff', padding: 20, borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', ...shadow() },
+    statCard: { flex: 1, backgroundColor: '#fff', padding: 20, borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', ...SHADOW.sm },
     statLabel: { fontSize: 13, color: CLR.textSec, fontWeight: '500' },
     statValue: { fontSize: 24, fontWeight: '700', color: CLR.textPri, marginTop: 4 },
     statIcon: { width: 44, height: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
 
-    card: { backgroundColor: '#fff', borderRadius: 20, padding: 24, borderWidth: 1, borderColor: '#E5E7EB', ...shadow('md') },
+    card: { backgroundColor: '#fff', borderRadius: 20, padding: 24, borderWidth: 1, borderColor: '#E5E7EB', ...SHADOW.md },
     cardTitle: { fontSize: 16, fontWeight: '700', color: CLR.textPri, marginBottom: 20 },
 
     statusGrid: { flexDirection: 'row', gap: 12, flexWrap: 'wrap' },
@@ -315,7 +326,7 @@ const styles = StyleSheet.create({
     searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 999, paddingHorizontal: 16, height: 44, borderWidth: 1, borderColor: '#E5E7EB' },
     searchInput: { flex: 1, padding: 0, fontSize: 15, color: CLR.textPri, height: '100%' },
 
-    userCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 16, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: '#E5E7EB', ...shadow() },
+    userCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 16, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: '#E5E7EB', ...SHADOW.sm },
     userAvatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', marginRight: 16 },
     userAvatarTxt: { fontSize: 18, fontWeight: '700', color: CLR.primary },
     userName: { fontSize: 15, fontWeight: '700', color: CLR.textPri },

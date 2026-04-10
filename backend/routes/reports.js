@@ -73,7 +73,8 @@ router.post('/', protect, authorize('junior_doctor'), (req, res, next) => { req.
                 recipient: patientDoc.user,
                 sender: req.user._id,
                 type: 'diagnosis_ready',
-                title: 'Medical Report Ready',
+                title: '[PATIENT] Medical Report Ready',
+                targetRole: 'patient',
                 message: `Your medical report for case ${caseId_str} has been submitted by Dr. ${req.user.name}.`,
                 relatedCase: req.body.case,
             });

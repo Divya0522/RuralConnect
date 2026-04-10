@@ -12,6 +12,17 @@ const api = axios.create({
     },
 });
 
+// For handling hard 401s (force logout)
+let unauthenticatedListeners = [];
+export const onUnauthenticated = (cb) => {
+    unauthenticatedListeners.push(cb);
+    return () => { unauthenticatedListeners = unauthenticatedListeners.filter(l => l !== cb); };
+};
+
+const notifyUnauthenticated = () => {
+    unauthenticatedListeners.forEach(cb => cb());
+};
+
 // Request interceptor — attach access token
 api.interceptors.request.use(
     async (config) => {
@@ -32,7 +43,9 @@ api.interceptors.response.use(
 
         if (error.response?.status === 401 &&
             error.response?.data?.code === 'TOKEN_EXPIRED' &&
-            !originalRequest._retry) {
+            !originalRequest._retry &&
+            !originalRequest.url.includes('/auth/refresh') &&
+            !originalRequest.url.includes('/auth/logout')) {
             originalRequest._retry = true;
             try {
                 const refreshToken = await AsyncStorage.getItem('refreshToken');
@@ -48,8 +61,15 @@ api.interceptors.response.use(
                 return api(originalRequest);
             } catch (refreshError) {
                 await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
+                notifyUnauthenticated(); // Force UI logout
                 return Promise.reject(refreshError);
             }
+        }
+
+        // Hard 401 (e.g. no token provided or invalid token handled by server)
+        if (error.response?.status === 401 && !originalRequest._retry &&
+            !originalRequest.url.includes('/auth/logout')) {
+            notifyUnauthenticated();
         }
 
         return Promise.reject(error);
@@ -73,6 +93,7 @@ export const caseService = {
     assign: (id, data) => api.patch(`/cases/${id}/assign`, data),
     updateStatus: (id, data) => api.patch(`/cases/${id}/status`, data),
     requestSeniorReview: (id, data) => api.patch(`/cases/${id}/request-senior-review`, data),
+    resolve: (id, data) => api.patch(`/cases/${id}/resolve`, data),
 };
 
 // Patients service
@@ -97,8 +118,10 @@ export const reportService = {
 export const diagnosisService = {
     list: (params) => api.get('/diagnoses', { params }),
     get: (id) => api.get(`/diagnoses/${id}`),
+    getForCase: (caseId) => api.get('/diagnoses', { params: { caseId, limit: 1 } }),
     create: (data) => api.post('/diagnoses', data),
     update: (id, data) => api.put(`/diagnoses/${id}`, data),
+    getPdfUrl: (id) => `${API_BASE_URL}/diagnoses/${id}/pdf`,
 };
 
 // Follow-up service

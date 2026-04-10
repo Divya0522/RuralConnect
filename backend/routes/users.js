@@ -7,7 +7,7 @@ const authorize = require('../middleware/roles');
 const { createLog } = require('../utils/logger');
 
 // GET /api/users - List users (Admin: all, Others: filtered)
-router.get('/', protect, authorize('admin', 'junior_doctor', 'senior_doctor'), async (req, res, next) => {
+router.get('/', protect, authorize('admin', 'junior_doctor', 'senior_doctor', 'helper_doctor', 'helpline_operator'), async (req, res, next) => {
     try {
         const { role, isActive, search, page = 1, limit = 20 } = req.query;
         const query = {};

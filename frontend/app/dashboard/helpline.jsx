@@ -8,36 +8,14 @@ import {
     View, Text, StyleSheet, ScrollView, TextInput,
     ActivityIndicator, RefreshControl, Platform, Pressable
 } from 'react-native';
-import { Feather, Ionicons } from '@expo/vector-icons';
+import { Feather, Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { useAuth } from '../../context/AuthContext';
 import { caseService, patientService, userService, villageService } from '../../services/api';
 import { StatCardSkeleton, CaseRowSkeleton, SkeletonBox } from '../../components/ui/Skeleton';
 
-// ─── DESIGN TOKENS (Inlined for Metro safety) ──────────────────────────────────
-const CLR = {
-    primary: '#2563EB',
-    primaryDk: '#1D4ED8',
-    success: '#22C55E',
-    warning: '#F59E0B',
-    danger: '#EF4444',
-    bg: '#F8FAFC',
-    card: '#FFFFFF',
-    textPri: '#111827',
-    textSec: '#6B7280',
-    border: '#E5E7EB',
-    // Sidebar Deep Navy
-    sidebar: '#0D1B2A',
-    sidebarAct: '#2563EB',
-};
+import { CLR, TY, SP, SHADOW } from '../../constants/DesignTokens';
 
-const SP = { xs: 4, sm: 8, md: 12, base: 16, lg: 20, xl: 24, xxl: 32 };
-
-const shadow = (lvl = 'sm') => {
-    const isWeb = Platform.OS === 'web';
-    if (lvl === 'md') return isWeb ? { boxShadow: '0 4px 12px rgba(0,0,0,0.08)' } : { elevation: 4, shadowOpacity: 0.1, shadowRadius: 10 };
-    return isWeb ? { boxShadow: '0 1px 3px rgba(0,0,0,0.1)' } : { elevation: 2, shadowOpacity: 0.05, shadowRadius: 3 };
-};
 
 const WEB = Platform.OS === 'web';
 const NO_OUTLINE = WEB ? { outlineStyle: 'none' } : {};
@@ -50,11 +28,14 @@ const PRI_MAP = {
 };
 
 const STS_MAP = {
-    submitted: { label: 'Complaint Filed', txt: '#6B7280', bg: '#F9FAFB', dot: '#9CA3AF' },
-    assigned: { label: 'Doctor Assigned', txt: '#4338CA', bg: '#EEF2FF', dot: '#6366F1' },
-    visited: { label: 'Patient Visited', txt: '#7C3AED', bg: '#F5F3FF', dot: '#8B5CF6' },
-    treated: { label: 'Treatment Done', txt: '#15803D', bg: '#F0FDF4', dot: '#22C55E' },
-    closed: { label: 'Closed', txt: '#6B7280', bg: '#F1F5F9', dot: '#94A3B8' },
+    'NEW': { label: 'New Complaint', txt: '#6B7280', bg: '#F9FAFB', dot: '#9CA3AF' },
+    'ASSIGNED': { label: 'Doctor Assigned', txt: '#4338CA', bg: '#EEF2FF', dot: '#6366F1' },
+    'DIAGNOSED': { label: 'Diagnosed', txt: '#7C3AED', bg: '#F5F3FF', dot: '#8B5CF6' },
+    'FOLLOWUP': { label: 'Follow-up', txt: '#F59E0B', bg: '#FFFBEB', dot: '#D97706' },
+    'ESCALATED': { label: 'Escalated', txt: '#EF4444', bg: '#FEF2F2', dot: '#DC2626' },
+    'SPECIALIST_REVIEW': { label: 'Specialist Review', txt: '#1D4ED8', bg: '#EFF6FF', dot: '#2563EB' },
+    'RESOLVED': { label: 'Resolved', txt: '#15803D', bg: '#F0FDF4', dot: '#22C55E' },
+    'CLOSED': { label: 'Closed', txt: '#6B7280', bg: '#F1F5F9', dot: '#94A3B8' },
 };
 
 // ─── PRIMITIVE COMPONENTS ─────────────────────────────────────────────────────
@@ -128,14 +109,22 @@ function DashboardCard({ label, value, icon, color, iBg, loading }) {
 
 // ─── MAIN VIEWS ──────────────────────────────────────────────────────────────
 
-function CasesView({ cases, loading, refreshing, onRefresh, doctors, onAssign }) {
+function CasesView({ cases, loading, refreshing, onRefresh, juniorDoctors, seniorDoctors, onAssign }) {
     const [search, setSearch] = useState('');
     const [assigningId, setAssigningId] = useState(null);
+    const [assignRole, setAssignRole] = useState(null); // 'junior_doctor' or 'senior_doctor'
+    const [assignOpen, setAssignOpen] = useState(false);
 
     const filtered = cases.filter(c =>
         c.chiefComplaint?.toLowerCase().includes(search.toLowerCase()) ||
         c.patient?.name?.toLowerCase().includes(search.toLowerCase())
     );
+
+    const handleAssignClick = (caseId) => {
+        setAssigningId(caseId);
+        setAssignRole(null);
+        setAssignOpen(false);
+    };
 
     return (
         <View style={{ flex: 1 }}>
@@ -174,21 +163,58 @@ function CasesView({ cases, loading, refreshing, onRefresh, doctors, onAssign })
                                 <Text style={styles.caseMeta}>Village: {c.village?.name || 'N/A'} • {new Date(c.createdAt).toLocaleDateString()}</Text>
 
                                 {assigningId === c._id ? (
-                                    <View style={styles.assignPicker}>
-                                        <Text style={styles.pickerTitle}>Assign a Junior Doctor:</Text>
-                                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 8 }}>
-                                            {doctors.map(d => (
-                                                <Btn key={d._id} style={styles.doctorPill} onPress={() => onAssign(c._id, d._id, d.name)}>
-                                                    <Text style={styles.doctorPillText}>Dr. {d.name}</Text>
+                                    <View style={styles.assignPanel}>
+                                        <Text style={styles.assignPanelTitle}>Select Doctor Type</Text>
+
+                                        <View style={styles.roleToggleRow}>
+                                            <Btn
+                                                style={[styles.roleBtn, assignRole === 'junior' && styles.roleBtnActive]}
+                                                onPress={() => { setAssignRole('junior'); setAssignOpen(false); }}
+                                            >
+                                                <Feather name="activity" size={16} color={assignRole === 'junior' ? '#fff' : CLR.textSec} style={{ marginRight: 6 }} />
+                                                <Text style={[styles.roleBtnTxt, assignRole === 'junior' && { color: '#fff' }]}>Junior Doctor ({juniorDoctors.length})</Text>
+                                            </Btn>
+                                            <Btn
+                                                style={[styles.roleBtn, assignRole === 'senior' && styles.roleBtnActiveAlt]}
+                                                onPress={() => { setAssignRole('senior'); setAssignOpen(false); }}
+                                            >
+                                                <Feather name="award" size={16} color={assignRole === 'senior' ? '#fff' : CLR.textSec} style={{ marginRight: 6 }} />
+                                                <Text style={[styles.roleBtnTxt, assignRole === 'senior' && { color: '#fff' }]}>Senior Doctor ({seniorDoctors.length})</Text>
+                                            </Btn>
+                                        </View>
+
+                                        {assignRole && (
+                                            <View style={[styles.doctorSelectWrap, { zIndex: 100 }]}>
+                                                <Btn style={[styles.input, styles.selRow, assignOpen && { borderColor: CLR.primary }]} onPress={() => setAssignOpen(!assignOpen)}>
+                                                    <Text style={{ fontSize: 14, color: CLR.textPri }}>Select a {assignRole} doctor...</Text>
+                                                    <Feather name={assignOpen ? 'chevron-up' : 'chevron-down'} size={15} color={CLR.textSec} />
                                                 </Btn>
-                                            ))}
-                                        </ScrollView>
-                                        <Btn style={styles.cancelBtn} onPress={() => setAssigningId(null)}>
-                                            <Text style={styles.cancelBtnText}>Cancel</Text>
+
+                                                {assignOpen && (
+                                                    <View style={styles.selDDInline}>
+                                                        <ScrollView style={{ maxHeight: 240 }} nestedScrollEnabled>
+                                                            {(assignRole === 'junior' ? juniorDoctors : seniorDoctors).map(d => (
+                                                                <Btn key={d._id} style={styles.doctorListItem} onPress={() => onAssign(c._id, d._id, d.name)} activeStyle={{ backgroundColor: '#F8FAFC' }}>
+                                                                    <AvatarCircle name={d.name} size={32} idx={d._id.charCodeAt(d._id.length - 1)} />
+                                                                    <View style={{ marginLeft: 12, flex: 1 }}>
+                                                                        <Text style={styles.doctorListName}>Dr. {d.name}</Text>
+                                                                        <Text style={styles.doctorListEmail}>{d.email}</Text>
+                                                                    </View>
+                                                                    <Feather name="chevron-right" size={16} color={CLR.primary} />
+                                                                </Btn>
+                                                            ))}
+                                                        </ScrollView>
+                                                    </View>
+                                                )}
+                                            </View>
+                                        )}
+
+                                        <Btn style={styles.cancelBtnInline} onPress={() => setAssigningId(null)}>
+                                            <Text style={styles.cancelBtnTextLine}>Cancel Assignment</Text>
                                         </Btn>
                                     </View>
                                 ) : (
-                                    <Btn style={styles.assignBtn} onPress={() => setAssigningId(c._id)}>
+                                    <Btn style={styles.assignBtn} onPress={() => handleAssignClick(c._id)}>
                                         <Feather name="user-plus" size={14} color={CLR.primary} style={{ marginRight: 6 }} />
                                         <Text style={styles.assignBtnText}>Assign Doctor</Text>
                                     </Btn>
@@ -337,18 +363,21 @@ export default function HelplineDashboard() {
     const { user, logout } = useAuth();
     const [nav, setNav] = useState('cases');
     const [cases, setCases] = useState([]);
-    const [doctors, setDoctors] = useState([]);
+    const [juniorDoctors, setJuniorDoctors] = useState([]);
+    const [seniorDoctors, setSeniorDoctors] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
     const loadData = useCallback(async () => {
         try {
-            const [cRes, dRes] = await Promise.all([
-                caseService.list({ status: 'submitted', limit: 50 }),
-                userService.list({ role: 'junior_doctor', isActive: true, limit: 100 })
+            const [cRes, jRes, sRes] = await Promise.all([
+                caseService.list({ status: 'NEW', limit: 50 }),
+                userService.list({ role: 'junior_doctor', isActive: true, limit: 100 }),
+                userService.list({ role: 'senior_doctor', isActive: true, limit: 100 })
             ]);
             setCases(cRes.data.data || []);
-            setDoctors(dRes.data.data || []);
+            setJuniorDoctors(jRes.data.data || []);
+            setSeniorDoctors(sRes.data.data || []);
         } catch {
             Toast.show({ type: 'error', text1: 'Error', text2: 'Failed to fetch dashboard data.' });
         } finally {
@@ -374,7 +403,10 @@ export default function HelplineDashboard() {
             {/* Sidebar */}
             <View style={styles.sidebar}>
                 <View style={styles.logoArea}>
-                    <View style={styles.logoIcon}><Ionicons name="heart" size={20} color="#fff" /></View>
+                    <View style={[styles.logoIcon, { backgroundColor: 'transparent' }]}>
+                        <FontAwesome5 name="heart" size={28} color="#000" style={{ position: 'absolute' }} />
+                        <FontAwesome5 name="heartbeat" size={28} color="#6366F1" />
+                    </View>
                     <View>
                         <Text style={styles.logoText}>Rural Health</Text>
                         <Text style={styles.logoSub}>CONNECT</Text>
@@ -408,7 +440,8 @@ export default function HelplineDashboard() {
                         <PageHeader title="Helpline Overview" subtitle="Monitor and direct healthcare assistance" action="Register Case" onAction={() => setNav('register')} />
                         <View style={styles.statsGrid}>
                             <DashboardCard label="Pending Cases" value={cases.length} icon="inbox" color={CLR.warning} iBg="#FFFBEB" loading={loading} />
-                            <DashboardCard label="Available Doctors" value={doctors.length} icon="user-check" color={CLR.success} iBg="#F0FDF4" loading={loading} />
+                            <DashboardCard label="Junior Doctors" value={juniorDoctors.length} icon="activity" color={CLR.primary} iBg="#EFF6FF" loading={loading} />
+                            <DashboardCard label="Senior Doctors" value={seniorDoctors.length} icon="award" color={CLR.success} iBg="#F0FDF4" loading={loading} />
                         </View>
                     </ScrollView>
                 ) : nav === 'cases' ? (
@@ -421,7 +454,8 @@ export default function HelplineDashboard() {
                             loading={loading}
                             refreshing={refreshing}
                             onRefresh={() => { setRefreshing(true); loadData(); }}
-                            doctors={doctors}
+                            juniorDoctors={juniorDoctors}
+                            seniorDoctors={seniorDoctors}
                             onAssign={handleAssign}
                         />
                     </View>
@@ -476,7 +510,7 @@ const styles = StyleSheet.create({
     ctaBtnText: { color: '#fff', fontWeight: '600' },
 
     statsGrid: { flexDirection: 'row', gap: 16 },
-    statCard: { flex: 1, backgroundColor: '#fff', padding: 20, borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', ...shadow() },
+    statCard: { flex: 1, backgroundColor: '#fff', padding: 20, borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', ...SHADOW.sm },
     statLabel: { fontSize: 14, color: CLR.textSec, fontWeight: '500' },
     statValue: { fontSize: 24, fontWeight: '700', color: CLR.textPri, marginTop: 4 },
     statIcon: { width: 44, height: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
@@ -485,7 +519,7 @@ const styles = StyleSheet.create({
     searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 999, paddingHorizontal: 16, height: 44, borderWidth: 1, borderColor: '#E5E7EB' },
     searchInput: { flex: 1, padding: 0, fontSize: 15, color: CLR.textPri, height: '100%' },
 
-    caseRow: { backgroundColor: '#fff', borderRadius: 16, marginBottom: 16, borderWidth: 1, borderColor: '#E5E7EB', ...shadow() },
+    caseRow: { backgroundColor: '#fff', borderRadius: 16, marginBottom: 16, borderWidth: 1, borderColor: '#E5E7EB', ...SHADOW.sm },
     caseBody: { padding: 16 },
     caseHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
     patientName: { fontSize: 16, fontWeight: '600', color: CLR.textPri },
@@ -497,24 +531,34 @@ const styles = StyleSheet.create({
     assignBtn: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#BFDBFE' },
     assignBtnText: { color: CLR.primary, fontWeight: '600', fontSize: 14 },
 
-    assignPicker: { backgroundColor: '#F8FAFC', padding: 12, borderRadius: 12, marginTop: 4 },
-    pickerTitle: { fontSize: 13, fontWeight: '600', color: CLR.textPri },
-    doctorPill: { backgroundColor: '#fff', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20, marginRight: 8, borderWidth: 1, borderColor: '#E5E7EB' },
-    doctorPillText: { fontSize: 13, color: CLR.primary, fontWeight: '600' },
-    cancelBtn: { marginTop: 8 },
-    cancelBtnText: { color: CLR.danger, fontWeight: '500', textAlign: 'center' },
+    assignPanel: { backgroundColor: '#F8FAFC', padding: 16, borderRadius: 12, marginTop: 8, borderWidth: 1, borderColor: '#F1F5F9' },
+    assignPanelTitle: { fontSize: 14, fontWeight: '600', color: CLR.textPri, marginBottom: 12 },
 
-    formCard: { backgroundColor: '#fff', borderRadius: 20, padding: 24, borderWidth: 1, borderColor: '#E5E7EB', ...shadow('md') },
+    roleToggleRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+    roleBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: '#E5E7EB' },
+    roleBtnActive: { backgroundColor: CLR.primary, borderColor: CLR.primary },
+    roleBtnActiveAlt: { backgroundColor: '#7C3AED', borderColor: '#7C3AED' },
+    roleBtnTxt: { fontSize: 13, fontWeight: '600', color: CLR.textSec },
+
+    doctorSelectWrap: { position: 'relative', zIndex: 10 },
+    selDDInline: { position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: '#fff', borderRadius: 8, borderWidth: 1, borderColor: '#E5E7EB', zIndex: 50, marginTop: 4, ...SHADOW.md, overflow: 'hidden' },
+    doctorListItem: { flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+    doctorListName: { fontSize: 14, fontWeight: '600', color: CLR.textPri },
+    doctorListEmail: { fontSize: 12, color: CLR.textSec, marginTop: 2 },
+    cancelBtnInline: { marginTop: 16, padding: 8, alignSelf: 'center' },
+    cancelBtnTextLine: { color: CLR.textSec, fontWeight: '500', fontSize: 13 },
+
+    formCard: { backgroundColor: '#fff', borderRadius: 20, padding: 24, borderWidth: 1, borderColor: '#E5E7EB', ...SHADOW.md },
     fRow: { flexDirection: 'row', gap: 18, marginBottom: 18 },
     field: { gap: 8, marginBottom: 18 },
     fieldLabel: { fontSize: 14, fontWeight: '600', color: '#374151' },
     input: { backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 12, paddingHorizontal: 14, height: 48, fontSize: 15, color: CLR.textPri },
     selRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    selDD: { position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', zIndex: 100, ...shadow('md') },
+    selDD: { position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', zIndex: 100, ...SHADOW.md },
     ddItem: { padding: 14, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
     textarea: { height: 100, textAlignVertical: 'top', paddingTop: 12 },
     actions: { marginTop: 12, alignItems: 'flex-end' },
-    submitBtn: { backgroundColor: CLR.primary, height: 48, paddingHorizontal: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center', ...shadow('md') },
+    submitBtn: { backgroundColor: CLR.primary, height: 48, paddingHorizontal: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center', ...SHADOW.md },
     submitTxt: { color: '#fff', fontSize: 15, fontWeight: '600' },
 
     emptyState: { alignItems: 'center', padding: 48 },

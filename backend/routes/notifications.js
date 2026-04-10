@@ -13,8 +13,12 @@ router.get('/', protect, async (req, res, next) => {
 
         const notifications = await Notification.find(query)
             .populate('sender', 'name role')
-            .populate('relatedCase', 'caseId chiefComplaint status')
-            .sort({ createdAt: -1 })
+            .populate({
+                path: 'relatedCase',
+                select: 'caseId chiefComplaint status severity patient',
+                populate: { path: 'patient', select: 'name village phone age gender' }
+            })
+            .sort({ isRead: 1, createdAt: -1 })
             .skip((page - 1) * limit)
             .limit(Number(limit));
         const total = await Notification.countDocuments(query);

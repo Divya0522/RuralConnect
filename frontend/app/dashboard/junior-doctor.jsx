@@ -6,65 +6,35 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TextInput,
-    ActivityIndicator, RefreshControl, Platform, Pressable
+    ActivityIndicator, RefreshControl, Platform, Pressable, Linking
 } from 'react-native';
-import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Feather, Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { useAuth } from '../../context/AuthContext';
-import { caseService, reportService, analyticsService, userService } from '../../services/api';
+import { caseService, diagnosisService, analyticsService, userService, followUpService } from '../../services/api';
 import { StatCardSkeleton, CaseRowSkeleton, SkeletonBox } from '../../components/ui/Skeleton';
-
-// ─── DESIGN TOKENS ────────────────────────────────────────────────────────────
-const CLR = {
-    primary: '#2563EB',
-    primarySoft: '#EFF6FF',
-    success: '#10B981',
-    successSoft: '#ECFDF5',
-    warning: '#F59E0B',
-    warningSoft: '#FFFBEB',
-    danger: '#EF4444',
-    dangerSoft: '#FEF2F2',
-    bg: '#F8FAFC',
-    card: '#FFFFFF',
-    textPri: '#111827',
-    textSec: '#64748B',
-    border: '#E2E8F0',
-    sidebar: '#0F172A',
-};
-
-const SP = { xs: 4, sm: 8, md: 12, base: 16, lg: 20, xl: 24, xxl: 32 };
-
-const shadow = (lvl = 'sm') => {
-    const isWeb = Platform.OS === 'web';
-    if (lvl === 'lg') return isWeb ? { boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' } : { elevation: 8 };
-    if (lvl === 'md') return isWeb ? { boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' } : { elevation: 4 };
-    return isWeb ? { boxShadow: '0 1px 2px 0 rgba(0,0,0,0.05)' } : { elevation: 2 };
-};
+import NotificationBell from '../../components/patient/NotificationBell';
+import { CLR, TY, SP, SHADOW } from '../../constants/DesignTokens';
 
 const WEB = Platform.OS === 'web';
 const NO_OUTLINE = WEB ? { outlineStyle: 'none' } : {};
 
 const PRI_MAP = {
-    critical: { label: 'Critical', txt: '#FFFFFF', bg: '#EF4444', dot: '#FFFFFF' },
+    critical: { label: 'Critical', txt: '#991B1B', bg: '#FEF2F2', dot: '#EF4444' },
     high: { label: 'High', txt: '#B91C1C', bg: '#FEE2E2', dot: '#EF4444' },
-    medium: { label: 'Medium', txt: '#92400E', bg: '#FEF3C7', dot: '#F59E0B' },
-    low: { label: 'Low', txt: '#1E40AF', bg: '#DBEAFE', dot: '#3B82F6' },
+    medium: { label: 'Medium', txt: CLR.status.FOLLOWUP.txt, bg: CLR.status.FOLLOWUP.bg, dot: CLR.status.FOLLOWUP.dot },
+    low: { label: 'Low', txt: CLR.status.ASSIGNED.txt, bg: CLR.status.ASSIGNED.bg, dot: CLR.status.ASSIGNED.dot },
 };
 
 const STS_MAP = {
-    submitted: { label: 'Complaint Filed', txt: '#475569', bg: '#F1F5F9', dot: '#64748B' },
-    assigned: { label: 'Doctor Assigned', txt: '#1E40AF', bg: '#DBEAFE', dot: '#3B82F6' },
-    visited: { label: 'Patient Visited', txt: '#92400E', bg: '#FEF3C7', dot: '#F59E0B' },
-    treated: { label: 'Treatment Done', txt: '#065F46', bg: '#D1FAE5', dot: '#10B981' },
-    reviewed: { label: 'Under Review', txt: '#1E40AF', bg: '#DBEAFE', dot: '#3B82F6' },
-    followup: { label: 'Follow-up', txt: '#065F46', bg: '#D1FAE5', dot: '#10B981' },
-    closed: { label: 'Closed', txt: '#475569', bg: '#F1F5F9', dot: '#64748B' },
-};
-
-const TY = {
-    sectionTitle: { fontSize: 18, fontWeight: '700', color: CLR.textPri },
-    body: { fontSize: 14, color: CLR.textPri, lineHeight: 20 },
-    bodyMuted: { fontSize: 14, color: CLR.textSec, lineHeight: 20 },
+    'NEW': { label: 'New Complaint', ...CLR.status.NEW },
+    'ASSIGNED': { label: 'Doctor Assigned', ...CLR.status.ASSIGNED },
+    'DIAGNOSED': { label: 'Diagnosed', ...CLR.status.DIAGNOSED },
+    'FOLLOWUP': { label: 'Follow-up', ...CLR.status.FOLLOWUP },
+    'ESCALATED': { label: 'Escalated', ...CLR.status.ESCALATED },
+    'SPECIALIST_REVIEW': { label: 'Specialist Review', ...CLR.status.SPECIALIST_REVIEW },
+    'RESOLVED': { label: 'Resolved', ...CLR.status.RESOLVED },
+    'CLOSED': { label: 'Closed', ...CLR.status.CLOSED },
 };
 
 // ─── UTILITY COMPONENTS ───────────────────────────────────────────────────────
@@ -131,29 +101,15 @@ function AvatarCircle({ name = '?', size = 32, idx = 0, style }) {
     );
 }
 
-function TopHeader({ user }) {
+function TopHeader({ user, onSelectCase }) {
     return (
         <View style={styles.topHeader}>
             <View style={styles.headerLeft}>
-                <Feather name="sidebar" size={20} color={CLR.textSec} style={{ marginRight: 20 }} />
-                <View style={styles.globalSearch}>
-                    <Feather name="search" size={18} color={CLR.textSec} style={{ marginRight: 10 }} />
-                    <TextInput
-                        style={[styles.globalSearchInput, NO_OUTLINE]}
-                        placeholder="Search patients, cases..."
-                        placeholderTextColor={CLR.textSec}
-                    />
-                </View>
+                <Feather name="shield" size={18} color={CLR.primary} />
+                <Text style={[TY.bodySemi, { marginLeft: 10 }]}>Secure Clinical Environment</Text>
             </View>
             <View style={styles.headerRight}>
-                <View style={styles.roleSwitcher}>
-                    <Text style={styles.roleSwitcherTxt}>Junior Doctor</Text>
-                    <Feather name="chevron-down" size={16} color={CLR.textSec} />
-                </View>
-                <Pressable style={styles.notifBtn}>
-                    <Feather name="bell" size={20} color={CLR.textPri} />
-                    <View style={styles.notifBadge}><Text style={styles.notifBadgeTxt}>3</Text></View>
-                </Pressable>
+                <NotificationBell onSelectCase={onSelectCase} />
             </View>
         </View>
     );
@@ -202,7 +158,7 @@ function DashboardView({ stats, cases, loading, onRefresh, onNav }) {
                                     </View>
                                     <View style={styles.caseActionsInner}>
                                         <StatusBadge label={c.severity?.toUpperCase()} {...(PRI_MAP[c.severity?.toLowerCase()] || PRI_MAP.medium)} />
-                                        <StatusBadge {...(STS_MAP[c.status?.toLowerCase()] || STS_MAP.assigned)} />
+                                        <StatusBadge {...(STS_MAP[c.status] || STS_MAP.NEW)} />
                                     </View>
                                 </Pressable>
                             ))
@@ -230,7 +186,10 @@ function CaseDetailsView({ caseData, onBack }) {
                     <Text style={styles.detailsCaseId}>{caseData.caseId}</Text>
                     <Text style={styles.detailsPatientName}>{caseData.patient?.name}</Text>
                 </View>
-                <StatusBadge label={caseData.severity?.toUpperCase()} {...(PRI_MAP[caseData.severity?.toLowerCase()] || PRI_MAP.medium)} />
+                <View style={{ alignItems: 'flex-end', gap: 8 }}>
+                    <StatusBadge label={caseData.severity?.toUpperCase()} {...(PRI_MAP[caseData.severity?.toLowerCase()] || PRI_MAP.medium)} />
+                    <StatusBadge {...(STS_MAP[caseData.status] || STS_MAP['NEW'])} />
+                </View>
             </View>
 
             <View style={styles.detailsGrid}>
@@ -306,7 +265,7 @@ function CasesView({ cases, loading, refreshing, onRefresh, onWriteReport, onReq
 
             <View style={styles.tableWrapper}>
                 <View style={styles.tableHeader}>
-                    <Text style={[styles.colHeader, { width: 80 }]}>ID</Text>
+                    <Text style={[styles.colHeader, { width: 100 }]}>Case ID</Text>
                     <Text style={[styles.colHeader, { flex: 1.5 }]}>Patient</Text>
                     <Text style={[styles.colHeader, { flex: 1 }]}>Village</Text>
                     <Text style={[styles.colHeader, { flex: 2.5 }]}>Complaint</Text>
@@ -322,7 +281,7 @@ function CasesView({ cases, loading, refreshing, onRefresh, onWriteReport, onReq
                         filtered.length === 0 ? <Text style={styles.emptyTxt}>No assigned cases found.</Text> :
                             filtered.map((c, idx) => (
                                 <Pressable key={c._id} style={styles.tr} onPress={() => onNav('details', c)}>
-                                    <Text style={[styles.tdId, { width: 80 }]}>{c.caseId?.substring(0, 4) || 'C00' + (idx + 1)}</Text>
+                                    <Text style={[styles.tdId, { width: 100 }]} numberOfLines={1}>{c.caseId || `C${String(idx + 1).padStart(3, '0')}`}</Text>
                                     <View style={[styles.tdPatient, { flex: 1.5 }]}>
                                         <Text style={styles.tdName}>{c.patient?.name}</Text>
                                     </View>
@@ -332,7 +291,7 @@ function CasesView({ cases, loading, refreshing, onRefresh, onWriteReport, onReq
                                         <StatusBadge label={c.severity === 'critical' ? 'Critical' : c.severity?.charAt(0).toUpperCase() + c.severity?.slice(1)} {...(PRI_MAP[c.severity?.toLowerCase()] || PRI_MAP.medium)} />
                                     </View>
                                     <View style={{ width: 140, alignItems: 'center' }}>
-                                        <StatusBadge {...(STS_MAP[c.status?.toLowerCase()] || STS_MAP.assigned)} />
+                                        <StatusBadge {...(STS_MAP[c.status] || STS_MAP['ASSIGNED'])} />
                                     </View>
                                     <Pressable style={{ width: 40, alignItems: 'center' }} onPress={() => onNav('details', c)}>
                                         <Feather name="arrow-right" size={18} color={CLR.primary} />
@@ -350,43 +309,138 @@ function CasesView({ cases, loading, refreshing, onRefresh, onWriteReport, onReq
  * PatientReviewView — Junior Doctor specific workflows
  */
 function PatientReviewView({ cases, loading, refreshing, onRefresh, onSubmitReview, onRequestSenior, seniors }) {
-    const pending = cases.filter(c => ['submitted', 'assigned', 'visited', 'reviewed'].includes(c.status?.toLowerCase()));
+    const pending = cases.filter(c => ['NEW', 'ASSIGNED', 'DIAGNOSED', 'FOLLOWUP', 'ESCALATED', 'SPECIALIST_REVIEW'].includes(c.status));
     const [selected, setSelected] = useState(pending[0] || null);
     const [submitting, setSubmitting] = useState(false);
     const [showSeniorList, setShowSeniorList] = useState(false);
     const [showStatusPicker, setShowStatusPicker] = useState(false);
+    const [showFollowupModal, setShowFollowupModal] = useState(false);
+    const [showCompleteModal, setShowCompleteModal] = useState(false); // New: Complete follow-up modal
+    const [currentFollowUp, setCurrentFollowUp] = useState(null); // The follow-up being completed
+    const [followupDate, setFollowupDate] = useState('');
+    const [followupNotes, setFollowupNotes] = useState('');
+    // Structured prescription items
+    const [rxItems, setRxItems] = useState([{ medicine: '', dosage: '', frequency: '', duration: '', route: 'oral' }]);
     const [form, setForm] = useState({
-        diagnosis: '', notes: '', prescription: '', status: '',
+        diagnosis: '', notes: '', treatmentPlan: '', dietaryAdvice: '', status: '',
         bp: '', temp: '', pulse: '', weight: ''
     });
 
     useEffect(() => {
         if (!selected && pending.length > 0) setSelected(pending[0]);
-        if (selected) setForm(f => ({ ...f, status: selected.status }));
+        if (selected) {
+            setForm(f => ({ ...f, status: selected.status }));
+            // Fetch pending follow-up if case is in FOLLOWUP status
+            const fetchFollowUp = async () => {
+                try {
+                    const res = await followUpService.list({ caseId: selected._id, isCompleted: false, limit: 1 });
+                    setCurrentFollowUp(res.data.data?.[0] || null);
+                } catch (e) {
+                    console.error('Failed to fetch follow-up info', e);
+                }
+            };
+            fetchFollowUp();
+        }
     }, [pending, selected]);
 
     const set = k => v => setForm(f => ({ ...f, [k]: v }));
 
+    const addRxItem = () => setRxItems(arr => [...arr, { medicine: '', dosage: '', frequency: '', duration: '', route: 'oral' }]);
+    const removeRxItem = (idx) => setRxItems(arr => arr.filter((_, i) => i !== idx));
+    const setRx = (idx, field, val) => setRxItems(arr => arr.map((item, i) => i === idx ? { ...item, [field]: val } : item));
+
     const handleAction = async (seniorId = null) => {
         if (!selected) return;
+        if (!form.diagnosis.trim() && !seniorId) {
+            Toast.show({ type: 'error', text1: 'Required', text2: 'Please enter a diagnosis.' });
+            return;
+        }
         setSubmitting(true);
+        const validRx = rxItems.filter(r => r.medicine.trim());
         try {
-            const data = {
-                caseId: selected._id,
-                patientId: selected.patient?._id,
-                vitals: { bloodPressure: form.bp, temperature: form.temp, pulse: form.pulse, weight: form.weight },
-                diagnosis: form.diagnosis,
-                notes: form.notes,
-                prescription: form.prescription,
-                status: form.status || selected.status,
-                seniorId
-            };
             if (seniorId) {
-                await onRequestSenior(selected._id, data);
+                await onRequestSenior(selected._id, {
+                    seniorId,
+                    patientId: selected.patient?._id,
+                    diagnosis: form.diagnosis,
+                    notes: form.notes,
+                    treatmentPlan: form.treatmentPlan,
+                    dietaryAdvice: form.dietaryAdvice,
+                    prescription: validRx,
+                    vitals: {
+                        bloodPressure: form.bp,
+                        temperature: form.temp,
+                        pulse: form.pulse,
+                        weight: form.weight
+                    }
+                });
             } else {
-                await onSubmitReview(data);
+                // Submit diagnosis to /api/diagnoses with structured prescription
+                await diagnosisService.create({
+                    case: selected._id,
+                    patient: selected.patient?._id,
+                    finalDiagnosis: form.diagnosis,
+                    notes: form.notes,
+                    treatmentPlan: form.treatmentPlan,
+                    dietaryAdvice: form.dietaryAdvice,
+                    prescription: JSON.stringify(validRx),
+                });
+                // Update case status if changed
+                if (form.status && form.status !== selected.status) {
+                    await caseService.updateStatus(selected._id, { status: form.status });
+                }
+                Toast.show({ type: 'success', text1: 'Success', text2: 'Diagnosis submitted successfully.' });
+                onSubmitReview();
             }
             setShowSeniorList(false);
+        } catch (e) {
+            Toast.show({ type: 'error', text1: 'Error', text2: e.response?.data?.error || 'Submission failed.' });
+        } finally { setSubmitting(false); }
+    };
+
+    const handleCompleteFollowup = async (action) => {
+        if (!currentFollowUp) return;
+        setSubmitting(true);
+        try {
+            await followUpService.complete(currentFollowUp._id, { outcome: 'Follow-up completed via dashboard' });
+
+            if (action === 'resolve') {
+                await caseService.updateStatus(selected._id, { status: 'RESOLVED', note: 'Case resolved after follow-up' });
+                Toast.show({ type: 'success', text1: 'Follow-up Complete', text2: 'Case marked as Resolved.' });
+                onSubmitReview(); // Refresh
+            } else {
+                // Schedule another
+                setShowCompleteModal(false);
+                setShowFollowupModal(true);
+            }
+        } catch (e) {
+            Toast.show({ type: 'error', text1: 'Error', text2: e.response?.data?.error || 'Completion failed.' });
+        } finally {
+            setSubmitting(false);
+            setShowCompleteModal(false);
+        }
+    };
+
+    const handleScheduleFollowup = async () => {
+        if (!selected || !followupDate.trim()) {
+            Toast.show({ type: 'error', text1: 'Required', text2: 'Please enter a follow-up date (YYYY-MM-DD).' });
+            return;
+        }
+        setSubmitting(true);
+        try {
+            await followUpService.create({
+                case: selected._id,
+                patient: selected.patient?._id,
+                scheduledDate: new Date(followupDate).toISOString(),
+                notes: followupNotes,
+            });
+            Toast.show({ type: 'success', text1: 'Follow-up Scheduled', text2: `Scheduled for ${followupDate}` });
+            setShowFollowupModal(false);
+            setFollowupDate('');
+            setFollowupNotes('');
+            onRefresh();
+        } catch (e) {
+            Toast.show({ type: 'error', text1: 'Error', text2: e.response?.data?.error || 'Scheduling failed.' });
         } finally { setSubmitting(false); }
     };
 
@@ -407,7 +461,7 @@ function PatientReviewView({ cases, loading, refreshing, onRefresh, onSubmitRevi
                                 <StatusBadge label={c.severity?.toUpperCase()} {...(PRI_MAP[c.severity?.toLowerCase()] || PRI_MAP.medium)} />
                             </View>
                             <Text style={styles.cardCasePrompt} numberOfLines={1}>{c.chiefComplaint}</Text>
-                            <StatusBadge {...(STS_MAP[c.status?.toLowerCase()] || STS_MAP.assigned)} />
+                            <StatusBadge {...(STS_MAP[c.status] || STS_MAP['ASSIGNED'])} />
                         </Pressable>
                     ))}
                     {pending.length === 0 && <Text style={styles.emptyTxt}>No pending reviews.</Text>}
@@ -429,7 +483,7 @@ function PatientReviewView({ cases, loading, refreshing, onRefresh, onSubmitRevi
                         <View style={styles.detailSection}>
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <Text style={styles.sectionLabel}>Complaint</Text>
-                                <Text style={{ fontSize: 12, color: CLR.textSec }}>Patient ID: {selected.patient?._id?.substring(0, 8)}...</Text>
+                                <Text style={{ fontSize: 12, color: CLR.textSec }}>Patient Details</Text>
                             </View>
                             <Text style={styles.sectionText}>{selected.chiefComplaint}</Text>
                             <Text style={[styles.sectionLabel, { marginTop: 12 }]}>Symptoms</Text>
@@ -445,14 +499,48 @@ function PatientReviewView({ cases, loading, refreshing, onRefresh, onSubmitRevi
                                 <View style={styles.vItem}><Text style={styles.vLabel}>Weight</Text><TextInput placeholder="65 kg" style={styles.vInput} value={form.weight} onChangeText={set('weight')} /></View>
                             </View>
 
-                            <Text style={styles.formH}>Diagnosis</Text>
-                            <TextInput placeholder="Enter diagnosis..." style={styles.mInput} value={form.diagnosis} onChangeText={set('diagnosis')} />
+                            <Text style={styles.formH}>Diagnosis *</Text>
+                            <TextInput placeholder="Enter clinical diagnosis..." style={styles.mInput} value={form.diagnosis} onChangeText={set('diagnosis')} />
 
                             <Text style={styles.formH}>Clinical Notes</Text>
-                            <TextInput placeholder="Add detailed notes..." style={[styles.mInput, { height: 80 }]} multiline value={form.notes} onChangeText={set('notes')} />
+                            <TextInput placeholder="Add detailed clinical notes..." style={[styles.mInput, { height: 80 }]} multiline value={form.notes} onChangeText={set('notes')} />
 
-                            <Text style={styles.formH}>Prescription</Text>
-                            <TextInput placeholder="Medications and instructions..." style={[styles.mInput, { height: 80 }]} multiline value={form.prescription} onChangeText={set('prescription')} />
+                            <Text style={styles.formH}>Treatment Plan</Text>
+                            <TextInput placeholder="Treatment plan..." style={[styles.mInput, { height: 60 }]} multiline value={form.treatmentPlan} onChangeText={set('treatmentPlan')} />
+
+                            <Text style={styles.formH}>Dietary Advice</Text>
+                            <TextInput placeholder="Dietary recommendations..." style={styles.mInput} value={form.dietaryAdvice} onChangeText={set('dietaryAdvice')} />
+
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 24, marginBottom: 12 }}>
+                                <Text style={styles.formH}>Prescription (Rx)</Text>
+                                <Btn style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: CLR.primarySoft, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 }} onPress={addRxItem}>
+                                    <Feather name="plus" size={14} color={CLR.primary} />
+                                    <Text style={{ color: CLR.primary, fontSize: 13, fontWeight: '600', marginLeft: 4 }}>Add Medicine</Text>
+                                </Btn>
+                            </View>
+                            {rxItems.map((rx, idx) => (
+                                <View key={idx} style={{ backgroundColor: '#F8FAFC', borderRadius: 10, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: CLR.border }}>
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                                        <Text style={{ fontSize: 12, fontWeight: '700', color: CLR.textSec }}>MEDICINE {idx + 1}</Text>
+                                        {rxItems.length > 1 && (
+                                            <Btn onPress={() => removeRxItem(idx)}>
+                                                <Feather name="x" size={14} color={CLR.danger} />
+                                            </Btn>
+                                        )}
+                                    </View>
+                                    <TextInput
+                                        placeholder="Medicine name"
+                                        style={[styles.vInput, { marginBottom: 6 }]}
+                                        value={rx.medicine}
+                                        onChangeText={v => setRx(idx, 'medicine', v)}
+                                    />
+                                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                                        <TextInput placeholder="Dosage" style={[styles.vInput, { flex: 1 }]} value={rx.dosage} onChangeText={v => setRx(idx, 'dosage', v)} />
+                                        <TextInput placeholder="Frequency" style={[styles.vInput, { flex: 1 }]} value={rx.frequency} onChangeText={v => setRx(idx, 'frequency', v)} />
+                                        <TextInput placeholder="Duration" style={[styles.vInput, { flex: 1 }]} value={rx.duration} onChangeText={v => setRx(idx, 'duration', v)} />
+                                    </View>
+                                </View>
+                            ))}
 
                             <Text style={styles.formH}>Update Status</Text>
                             <Pressable style={styles.statusPicker} onPress={() => setShowStatusPicker(!showStatusPicker)}>
@@ -461,7 +549,7 @@ function PatientReviewView({ cases, loading, refreshing, onRefresh, onSubmitRevi
                             </Pressable>
                             {showStatusPicker && (
                                 <View style={styles.pickerDropdown}>
-                                    {['submitted', 'assigned', 'visited', 'reviewed', 'treated', 'followup', 'closed'].map(s => (
+                                    {['NEW', 'ASSIGNED', 'DIAGNOSED', 'FOLLOWUP', 'ESCALATED', 'SPECIALIST_REVIEW', 'RESOLVED', 'CLOSED'].map(s => (
                                         <Pressable key={s} style={styles.pickerItem} onPress={() => { set('status')(s); setShowStatusPicker(false); }}>
                                             <Text style={{ color: form.status === s ? CLR.primary : CLR.textPri }}>{STS_MAP[s]?.label || s}</Text>
                                         </Pressable>
@@ -470,15 +558,88 @@ function PatientReviewView({ cases, loading, refreshing, onRefresh, onSubmitRevi
                             )}
 
                             <View style={styles.reviewActions}>
-                                <Btn style={styles.submitReviewBtn} onPress={() => handleAction(false)} disabled={submitting}>
+                                {currentFollowUp && (
+                                    <Btn style={[styles.submitReviewBtn, { backgroundColor: CLR.success }]} onPress={() => setShowCompleteModal(true)} disabled={submitting}>
+                                        <Feather name="check-circle" size={16} color="#fff" style={{ marginRight: 8 }} />
+                                        <Text style={styles.submitReviewBtnText}>Mark Follow-up Complete</Text>
+                                    </Btn>
+                                )}
+                                <Btn style={styles.submitReviewBtn} onPress={() => handleAction(null)} disabled={submitting}>
                                     <Feather name="send" size={16} color="#fff" style={{ marginRight: 8 }} />
-                                    <Text style={styles.submitReviewBtnText}>{submitting ? 'Sending...' : 'Submit Review'}</Text>
+                                    <Text style={styles.submitReviewBtnText}>{submitting ? 'Saving...' : 'Save Diagnosis'}</Text>
+                                </Btn>
+                                <Btn style={[styles.requestSeniorBtn, { backgroundColor: CLR.successSoft, borderColor: CLR.success }]} onPress={() => setShowFollowupModal(true)} disabled={submitting}>
+                                    <Feather name="calendar" size={16} color={CLR.success} style={{ marginRight: 6 }} />
+                                    <Text style={[styles.requestSeniorBtnText, { color: CLR.success }]}>Schedule Follow-up</Text>
                                 </Btn>
                                 <Btn style={styles.requestSeniorBtn} onPress={() => setShowSeniorList(true)} disabled={submitting}>
                                     <Feather name="share-2" size={16} color={CLR.textPri} style={{ marginRight: 8 }} />
-                                    <Text style={styles.requestSeniorBtnText}>Request Senior</Text>
+                                    <Text style={styles.requestSeniorBtnText}>Escalate</Text>
                                 </Btn>
                             </View>
+
+                            {/* Complete Follow-up Multi-action Modal */}
+                            {showCompleteModal && (
+                                <View style={styles.modalOverlay}>
+                                    <View style={styles.seniorModal}>
+                                        <View style={styles.modalHeader}>
+                                            <Text style={styles.modalTitle}>Complete Follow-up</Text>
+                                            <Pressable onPress={() => setShowCompleteModal(false)}><Feather name="x" size={20} color={CLR.textSec} /></Pressable>
+                                        </View>
+                                        <Text style={TY.bodyMuted}>Follow-up for {selected.patient?.name} is finished. What is the next step for this case?</Text>
+
+                                        <View style={{ gap: 12, marginTop: 24 }}>
+                                            <Btn
+                                                style={[styles.submitReviewBtn, { backgroundColor: CLR.success }]}
+                                                onPress={() => handleCompleteFollowup('resolve')}
+                                                disabled={submitting}
+                                            >
+                                                <Feather name="check-circle" size={16} color="#fff" style={{ marginRight: 8 }} />
+                                                <Text style={styles.submitReviewBtnText}>Complete & Resolve Case</Text>
+                                            </Btn>
+
+                                            <Btn
+                                                style={[styles.requestSeniorBtn, { flex: 1, backgroundColor: CLR.primarySoft, borderColor: CLR.primary }]}
+                                                onPress={() => handleCompleteFollowup('next')}
+                                                disabled={submitting}
+                                            >
+                                                <Feather name="calendar" size={16} color={CLR.primary} style={{ marginRight: 8 }} />
+                                                <Text style={[styles.requestSeniorBtnText, { color: CLR.primary }]}>Complete & Schedule Another</Text>
+                                            </Btn>
+                                        </View>
+                                    </View>
+                                </View>
+                            )}
+
+                            {/* Follow-up Modal */}
+                            {showFollowupModal && (
+                                <View style={styles.modalOverlay}>
+                                    <View style={styles.seniorModal}>
+                                        <View style={styles.modalHeader}>
+                                            <Text style={styles.modalTitle}>Schedule Follow-up</Text>
+                                            <Pressable onPress={() => setShowFollowupModal(false)}><Feather name="x" size={20} color={CLR.textSec} /></Pressable>
+                                        </View>
+                                        <Text style={[styles.formH, { marginTop: 0 }]}>Follow-up Date (YYYY-MM-DD)</Text>
+                                        <TextInput
+                                            style={[styles.mInput, { marginBottom: 16 }]}
+                                            placeholder="e.g. 2026-03-15"
+                                            value={followupDate}
+                                            onChangeText={setFollowupDate}
+                                        />
+                                        <Text style={styles.formH}>Notes</Text>
+                                        <TextInput
+                                            style={[styles.mInput, { height: 80, marginBottom: 20 }]}
+                                            placeholder="Follow-up instructions..."
+                                            value={followupNotes}
+                                            onChangeText={setFollowupNotes}
+                                            multiline
+                                        />
+                                        <Btn style={styles.submitReviewBtn} onPress={handleScheduleFollowup} disabled={submitting}>
+                                            <Text style={styles.submitReviewBtnText}>{submitting ? 'Scheduling...' : 'Confirm Follow-up'}</Text>
+                                        </Btn>
+                                    </View>
+                                </View>
+                            )}
                         </View>
                     </ScrollView>
 
@@ -626,34 +787,43 @@ export default function JuniorDoctorDashboard() {
 
     const handleReviewSubmit = async (data) => {
         try {
-            const formData = new FormData();
-            formData.append('case', data.caseId);
-            formData.append('patient', data.patientId);
-            formData.append('clinicalNotes', data.notes);
-            formData.append('provisionalDiagnosis', data.diagnosis);
-            formData.append('treatmentGiven', data.prescription);
-            formData.append('vitals', JSON.stringify(data.vitals));
-            formData.append('status', data.status);
-
-            await reportService.create(formData);
-            if (data.status) {
-                await caseService.updateStatus(data.caseId, { status: data.status });
-            }
-            Toast.show({ type: 'success', text1: 'Review Submitted', text2: 'Report has been saved.' });
+            // Post structured diagnosis with prescription array
+            await diagnosisService.create({
+                case: data.caseId,
+                patient: data.patientId,
+                finalDiagnosis: data.diagnosis,
+                prescription: JSON.stringify(data.prescription || []),
+                notes: data.notes,
+                treatmentPlan: data.treatmentPlan,
+                dietaryAdvice: data.dietaryAdvice,
+            });
+            Toast.show({ type: 'success', text1: 'Diagnosis Saved', text2: 'Diagnosis and prescription have been recorded.' });
             loadData();
-        } catch {
-            Toast.show({ type: 'error', text1: 'Error', text2: 'Submission failed.' });
+        } catch (e) {
+            Toast.show({ type: 'error', text1: 'Error', text2: e.response?.data?.error || 'Submission failed.' });
         }
     };
 
     const handleEscalateWithData = async (cid, data) => {
         try {
-            await handleReviewSubmit(data); // Submit report first
+            // Save diagnosis first if there is one
+            if (data.diagnosis?.trim()) {
+                await diagnosisService.create({
+                    case: cid,
+                    patient: data.patientId,
+                    finalDiagnosis: data.diagnosis,
+                    prescription: JSON.stringify(data.prescription || []),
+                    notes: data.notes,
+                    treatmentPlan: data.treatmentPlan,
+                    dietaryAdvice: data.dietaryAdvice,
+                    vitals: JSON.stringify(data.vitals || {})
+                });
+            }
             await caseService.requestSeniorReview(cid, { seniorId: data.seniorId });
-            Toast.show({ type: 'success', text1: 'Escalated', text2: 'Case sent to Senior Doctor.' });
+            Toast.show({ type: 'success', text1: 'Escalated', text2: 'Case escalated to Senior Doctor.' });
             loadData();
-        } catch {
-            Toast.show({ type: 'error', text1: 'Error', text2: 'Escalation failed.' });
+        } catch (e) {
+            Toast.show({ type: 'error', text1: 'Error', text2: e.response?.data?.error || 'Escalation failed.' });
         }
     };
 
@@ -663,10 +833,10 @@ export default function JuniorDoctorDashboard() {
     };
 
     const stats = useMemo(() => [
-        { label: 'TOTAL CASES', value: analytics?.totalCases || 6, icon: <Feather name="clipboard" size={20} color={CLR.primary} />, bg: CLR.primarySoft, trend: '+12% this month' },
-        { label: 'ACTIVE CASES', value: analytics?.activeCases || 4, icon: <MaterialCommunityIcons name="heart-pulse" size={20} color={CLR.warning} />, bg: CLR.warningSoft },
-        { label: 'CRITICAL', value: analytics?.severityBreakdown?.critical || 1, icon: <Feather name="alert-triangle" size={18} color={CLR.danger} />, bg: CLR.dangerSoft },
-        { label: 'VILLAGES', value: analytics?.villageCount || 4, icon: <Feather name="home" size={20} color={CLR.success} />, bg: CLR.successSoft },
+        { label: 'TOTAL CASES', value: analytics?.totalCases || 6, icon: <Feather name="clipboard" size={20} color={CLR.primary} />, bg: CLR.primaryTint },
+        { label: 'ACTIVE CASES', value: analytics?.activeCases || 4, icon: <MaterialCommunityIcons name="heart-pulse" size={20} color={CLR.warning} />, bg: '#FFFBEB' },
+        { label: 'CRITICAL', value: analytics?.severityBreakdown?.critical || 1, icon: <Feather name="alert-triangle" size={18} color={CLR.danger} />, bg: '#FEF2F2' },
+        { label: 'VILLAGES', value: analytics?.villageCount || 4, icon: <Feather name="home" size={20} color={CLR.success} />, bg: '#F0FDF4' },
     ], [analytics]);
 
     return (
@@ -674,7 +844,10 @@ export default function JuniorDoctorDashboard() {
             {/* SIDEBAR */}
             <View style={styles.sidebar}>
                 <View style={styles.sidebarHeader}>
-                    <View style={styles.logoCircle}><Ionicons name="heart" size={18} color="#fff" /></View>
+                    <View style={[styles.logoCircle, { backgroundColor: 'transparent', shadowOpacity: 0 }]}>
+                        <FontAwesome5 name="heart" size={18} color="#000" style={{ position: 'absolute' }} />
+                        <FontAwesome5 name="heartbeat" size={18} color="#6366F1" />
+                    </View>
                     <View>
                         <Text style={styles.logoName}>Rural Health</Text>
                         <Text style={styles.logoTag}>CONNECT</Text>
@@ -690,14 +863,16 @@ export default function JuniorDoctorDashboard() {
 
                 <View style={styles.sidebarFooter}>
                     <View style={styles.userCard}>
-                        <View style={styles.userAvatar}><Text style={styles.userInitials}>{user?.name?.[0] || 'D'}</Text></View>
+                        <View style={styles.userAvatar}>
+                            <Text style={styles.userInitials}>{user?.name?.[0]}</Text>
+                        </View>
                         <View style={{ flex: 1 }}>
-                            <Text style={styles.userName}>Dr. {user?.name || 'Priya Singh'}</Text>
+                            <Text style={styles.userName}>Dr. {user?.name}</Text>
                             <Text style={styles.userRole}>Junior Doctor</Text>
                         </View>
                     </View>
                     <Btn style={styles.signOutBtn} onPress={logout}>
-                        <Feather name="log-out" size={18} color="#94A3B8" />
+                        <Feather name="log-out" size={18} color={CLR.danger} />
                         <Text style={styles.signOutTxt}>Sign Out</Text>
                     </Btn>
                 </View>
@@ -705,7 +880,7 @@ export default function JuniorDoctorDashboard() {
 
             {/* MAIN AREA */}
             <View style={styles.main}>
-                <TopHeader user={user} />
+                <TopHeader user={user} onSelectCase={(c) => { setSelectedCase(c); setNav('details'); }} />
                 {nav === 'dashboard' ? (
                     <DashboardView stats={stats} cases={cases} loading={loading} onRefresh={loadData} onNav={setNav} />
                 ) : nav === 'cases' ? (
@@ -748,41 +923,41 @@ export default function JuniorDoctorDashboard() {
 // ─── STYLES ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
     root: { flex: 1, flexDirection: 'row', backgroundColor: CLR.bg },
-    sidebar: { width: 260, backgroundColor: CLR.sidebar, padding: 24, justifyContent: 'space-between' },
+    sidebar: { width: 280, backgroundColor: CLR.sidebarBg, padding: 24, justifyContent: 'space-between' },
     main: { flex: 1 },
 
     // Sidebar
     sidebarHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 40 },
-    logoCircle: { width: 34, height: 34, borderRadius: 10, backgroundColor: CLR.primary, alignItems: 'center', justifyContent: 'center' },
-    logoName: { color: '#fff', fontSize: 16, fontWeight: '700' },
-    logoTag: { color: '#94A3B8', fontSize: 11, fontWeight: '600', letterSpacing: 1.5 },
+    logoCircle: { width: 44, height: 44, borderRadius: 14, backgroundColor: CLR.primary, alignItems: 'center', justifyContent: 'center', ...SHADOW.md },
+    logoName: { color: '#F1F5F9', fontSize: 20, fontWeight: '800', letterSpacing: -0.5 },
+    logoTag: { color: CLR.sidebarText, fontSize: 10, fontWeight: '700', letterSpacing: 1 },
     sidebarContent: { flex: 1 },
     sidebarHeading: { color: '#64748B', fontSize: 11, fontWeight: '700', letterSpacing: 1.5, marginBottom: 16, marginTop: 16 },
-    navItem: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 10, gap: 12, marginBottom: 4 },
-    navItemActive: { backgroundColor: 'rgba(255,255,255,0.08)' },
-    navLabel: { color: '#94A3B8', fontSize: 15, fontWeight: '500' },
-    navLabelActive: { color: '#fff', fontWeight: '600' },
-    sidebarFooter: { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)', paddingTop: 24 },
-    userCard: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 },
-    userAvatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: CLR.primary, alignItems: 'center', justifyContent: 'center' },
+    navItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13, paddingHorizontal: 16, borderRadius: 12, gap: 12, marginBottom: 4 },
+    navItemActive: { backgroundColor: CLR.sidebarActive },
+    navLabel: { color: CLR.sidebarText, fontSize: 14, fontWeight: '600' },
+    navLabelActive: { color: CLR.sidebarTextActive },
+    sidebarFooter: { marginTop: 'auto', gap: 12, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.07)', paddingTop: 16 },
+    userCard: { flexDirection: 'row', alignItems: 'center', padding: 10, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12, gap: 12 },
+    userAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: CLR.primary, alignItems: 'center', justifyContent: 'center' },
     userInitials: { color: '#fff', fontSize: 14, fontWeight: '700' },
-    userName: { color: '#fff', fontSize: 14, fontWeight: '600' },
-    userRole: { color: '#64748B', fontSize: 12 },
-    signOutBtn: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingLeft: 4 },
-    signOutTxt: { color: '#94A3B8', fontSize: 14, fontWeight: '500' },
+    userName: { color: '#F1F5F9', fontSize: 13, fontWeight: '700' },
+    userRole: { color: 'rgba(255,255,255,0.6)', fontSize: 12, fontWeight: '600' },
+    signOutBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, gap: 10, borderRadius: 10 },
+    signOutTxt: { color: '#F87171', fontSize: 13, fontWeight: '600' },
 
     // Dashboard View
-    content: { padding: 24 },
-    greetingSection: { marginBottom: 24 },
-    welcomeText: { fontSize: 24, fontWeight: '700', color: CLR.textPri },
-    subGreeting: { fontSize: 14, color: CLR.textSec, marginTop: 4 },
+    content: { padding: 32 },
+    greetingSection: { marginBottom: 32 },
+    welcomeText: { fontSize: 24, fontWeight: '800', color: CLR.textPri, letterSpacing: -0.5 },
+    subGreeting: { fontSize: 15, color: CLR.textSec, marginTop: 4 },
     statsRow: { flexDirection: 'row', gap: 16, marginBottom: 32 },
-    statCard: { flex: 1, backgroundColor: '#fff', borderRadius: 16, padding: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', ...shadow() },
+    statCard: { flex: 1, backgroundColor: '#fff', borderRadius: 16, padding: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', ...SHADOW.sm },
     statLabel: { color: CLR.textSec, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
     statValue: { color: CLR.textPri, fontSize: 28, fontWeight: '700', marginTop: 8 },
     statTrend: { fontSize: 12, fontWeight: '600', color: CLR.success, marginTop: 8 },
     statIconCircle: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-    panel: { backgroundColor: '#fff', borderRadius: 20, padding: 24, ...shadow() },
+    panel: { backgroundColor: '#fff', borderRadius: 20, padding: 24, ...SHADOW.md },
     panelHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 },
     panelTitle: { fontSize: 18, fontWeight: '700', color: CLR.textPri },
     viewAllBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
@@ -795,19 +970,19 @@ const styles = StyleSheet.create({
 
     // Workstation common
     viewContainer: { flex: 1 },
-    viewHeader: { padding: 24, paddingBottom: 12 },
+    viewHeader: { padding: 32, paddingBottom: 16 },
     viewTitle: { fontSize: 22, fontWeight: '700', color: CLR.textPri },
     viewSubtitle: { fontSize: 14, color: CLR.textSec, marginTop: 4 },
 
     // Cases View (Image 1 Table Style)
-    tableToolbar: { flexDirection: 'row', gap: 16, padding: 24, paddingBottom: 16 },
-    tableSearch: { flex: 1, height: 48, backgroundColor: '#fff', borderRadius: 12, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, borderWidth: 1, borderColor: CLR.border },
+    tableToolbar: { flexDirection: 'row', gap: 16, padding: 32, paddingBottom: 16 },
+    tableSearch: { flex: 1, height: 48, backgroundColor: CLR.bg, borderRadius: 12, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, borderWidth: 1, borderColor: CLR.border },
     tableSearchInput: { flex: 1, fontSize: 14, color: CLR.textPri },
     filterBtn: { height: 48, backgroundColor: '#fff', borderRadius: 12, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, borderWidth: 1, borderColor: CLR.border },
     filterBtnTxt: { fontSize: 14, fontWeight: '600', color: CLR.textPri },
 
-    tableWrapper: { flex: 1, marginHorizontal: 24, marginBottom: 24, backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: CLR.border, overflow: 'hidden' },
-    tableHeader: { flexDirection: 'row', paddingVertical: 16, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: CLR.border, backgroundColor: '#fff' },
+    tableWrapper: { flex: 1, marginHorizontal: 32, marginBottom: 32, backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: CLR.border, overflow: 'hidden', ...SHADOW.sm },
+    tableHeader: { flexDirection: 'row', paddingVertical: 16, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: CLR.border, backgroundColor: CLR.bg },
     colHeader: { fontSize: 13, fontWeight: '600', color: CLR.textSec, textTransform: 'uppercase', letterSpacing: 0.5 },
 
     tr: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
@@ -817,7 +992,7 @@ const styles = StyleSheet.create({
     tdText: { fontSize: 14, color: CLR.textSec },
 
     // Top Header
-    topHeader: { height: 72, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: CLR.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24 },
+    topHeader: { height: 80, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: CLR.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 32, zIndex: 100 },
     headerLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
     globalSearch: { width: 320, height: 40, backgroundColor: '#F1F5F9', borderRadius: 10, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12 },
     globalSearchInput: { flex: 1, fontSize: 14, color: CLR.textPri },
@@ -832,7 +1007,7 @@ const styles = StyleSheet.create({
     formContent: { padding: 40, alignItems: 'center' },
     backLink: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginBottom: 24 },
     backLinkTxt: { fontSize: 15, fontWeight: '600', color: CLR.primary, marginLeft: 4 },
-    formCard: { backgroundColor: '#fff', width: '100%', maxWidth: 700, borderRadius: 24, padding: 40, ...shadow('md') },
+    formCard: { backgroundColor: '#fff', width: '100%', maxWidth: 700, borderRadius: 24, padding: 40, ...SHADOW.md },
     formH1: { fontSize: 24, fontWeight: '700', color: CLR.textPri, marginBottom: 8 },
     formLabel: { fontSize: 13, fontWeight: '600', color: CLR.primary, marginBottom: 32 },
     complaintBox: { backgroundColor: '#F8FAFC', padding: 20, borderRadius: 16, marginBottom: 32, borderLeftWidth: 4, borderLeftColor: CLR.primary },
@@ -844,7 +1019,7 @@ const styles = StyleSheet.create({
     inputGroup: { marginBottom: 24 },
     inputLabel: { fontSize: 14, fontWeight: '600', color: '#1E293B', marginBottom: 10 },
     inputField: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: CLR.border, borderRadius: 12, height: 50, paddingHorizontal: 16, fontSize: 15, color: CLR.textPri },
-    submitCaseBtn: { backgroundColor: CLR.primary, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginTop: 8, ...shadow('md') },
+    submitCaseBtn: { backgroundColor: CLR.primary, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginTop: 8, ...SHADOW.md },
     submitCaseBtnTxt: { color: '#fff', fontSize: 16, fontWeight: '700' },
 
     // Global
@@ -892,7 +1067,7 @@ const styles = StyleSheet.create({
     detailsCaseId: { fontSize: 12, fontWeight: '800', color: CLR.primary, letterSpacing: 1, marginBottom: 4 },
     detailsPatientName: { fontSize: 32, fontWeight: '700', color: CLR.textPri },
     detailsGrid: { flexDirection: 'row', gap: 24 },
-    detailsCard: { flex: 1, backgroundColor: '#fff', borderRadius: 20, padding: 24, ...shadow() },
+    detailsCard: { flex: 1, backgroundColor: '#fff', borderRadius: 20, padding: 24, ...SHADOW.sm },
     detailsCardTitle: { fontSize: 16, fontWeight: '700', color: CLR.textPri, marginBottom: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: CLR.border },
     detailsInfoRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
     detailsInfoLabel: { fontSize: 13, color: CLR.textSec, fontWeight: '500' },
@@ -907,10 +1082,10 @@ const styles = StyleSheet.create({
     historyMeta: { fontSize: 12, color: CLR.textSec, marginTop: 2 },
 
     // Pickers & Modals
-    pickerDropdown: { backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: CLR.border, marginTop: 4, overflow: 'hidden', ...shadow() },
+    pickerDropdown: { backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: CLR.border, marginTop: 4, overflow: 'hidden', ...SHADOW.sm },
     pickerItem: { padding: 12, borderBottomWidth: 1, borderBottomColor: '#F8FAFC' },
     modalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', zIndex: 100 },
-    seniorModal: { width: 400, backgroundColor: '#fff', borderRadius: 24, padding: 24, ...shadow('lg') },
+    seniorModal: { width: 400, backgroundColor: '#fff', borderRadius: 24, padding: 24, ...SHADOW.lg },
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
     modalTitle: { fontSize: 18, fontWeight: '700', color: CLR.textPri },
     seniorItem: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: '#F1F5F9' },

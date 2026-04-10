@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { authService } from '../services/api';
+import { authService, onUnauthenticated } from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -29,6 +29,12 @@ export const AuthProvider = ({ children }) => {
 
     useEffect(() => {
         loadStoredAuth();
+        // Force logout if API returns hard 401
+        const unsubscribe = onUnauthenticated(() => {
+            console.log('Session expired, logging out...');
+            logout();
+        });
+        return () => unsubscribe();
     }, [loadStoredAuth]);
 
     const login = async (email, password) => {
@@ -58,7 +64,12 @@ export const AuthProvider = ({ children }) => {
     };
 
     const logout = async () => {
-        try { await authService.logout(); } catch { }
+        try {
+            // Optional: call API to invalidate token, but catch any error to avoid loops
+            await authService.logout();
+        } catch (e) {
+            console.log('Logout API call failed, proceeding to clear local storage', e.message);
+        }
         await AsyncStorage.multiRemove(['accessToken', 'refreshToken', 'user']);
         setUser(null);
         setIsAuthenticated(false);

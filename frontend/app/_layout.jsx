@@ -15,11 +15,12 @@ function AuthGuard({ children }) {
         if (loading) return;
 
         const inAuthGroup = segments[0] === 'auth';
+        const atLanding = segments[0] === 'landing';
         const atRoot = segments.length === 0;
 
-        if (!isAuthenticated && !inAuthGroup) {
-            router.replace('/auth/login');
-        } else if (isAuthenticated && (inAuthGroup || atRoot)) {
+        if (!isAuthenticated && !inAuthGroup && !atLanding) {
+            router.replace('/landing');
+        } else if (isAuthenticated && (inAuthGroup || atRoot || atLanding)) {
             router.replace('/dashboard');
         }
     }, [isAuthenticated, loading, segments]);

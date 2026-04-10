@@ -8,7 +8,7 @@ const protect = require('../middleware/auth');
 const authorize = require('../middleware/roles');
 
 // GET /api/analytics/summary - admin/panchayat overview
-router.get('/summary', protect, authorize('admin', 'panchayat_officer', 'senior_doctor', 'junior_doctor'), async (req, res, next) => {
+router.get('/summary', protect, authorize('admin', 'panchayat_officer', 'senior_doctor', 'junior_doctor', 'helper_doctor'), async (req, res, next) => {
     try {
         const villageFilter = req.user.role === 'panchayat_officer' ? { village: req.user.village } : {};
 
@@ -17,7 +17,7 @@ router.get('/summary', protect, authorize('admin', 'panchayat_officer', 'senior_
             casesByStatus, casesBySeverity, casesByMonth,
         ] = await Promise.all([
             Case.countDocuments(villageFilter),
-            Case.countDocuments({ ...villageFilter, status: { $in: ['submitted', 'assigned', 'visited'] } }),
+            Case.countDocuments({ ...villageFilter, status: { $in: ['NEW', 'ASSIGNED', 'DIAGNOSED', 'FOLLOWUP', 'ESCALATED', 'SPECIALIST_REVIEW'] } }),
             Patient.countDocuments(),
             User.countDocuments({ isActive: true }),
             Case.aggregate([

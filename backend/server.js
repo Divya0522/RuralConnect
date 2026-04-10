@@ -8,6 +8,7 @@ const path = require('path');
 require('dotenv').config();
 
 const errorHandler = require('./middleware/errorHandler');
+const { initScheduler } = require('./utils/scheduler');
 
 // Route imports
 const authRoutes = require('./routes/auth');
@@ -39,10 +40,10 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
-// Auth rate limiting (stricter)
+// Auth rate limiting (stricter but relaxed for dev)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: 1000, // Increased to 1000 to prevent local dev UI hot reload lockouts
   message: { error: 'Too many auth attempts, please try again later.' },
 });
 app.use('/api/auth/', authLimiter);
@@ -86,6 +87,7 @@ const PORT = process.env.PORT || 5000;
 mongoose.connect(process.env.MONGO_URL)
   .then(() => {
     console.log('✅ MongoDB connected successfully');
+    initScheduler();
     app.listen(PORT, () => {
       console.log(`🚀 Rural Health Connect API running on port ${PORT}`);
       console.log(`📡 Environment: ${process.env.NODE_ENV}`);

@@ -10,7 +10,7 @@ const followUpSchema = new mongoose.Schema({
     completedAt: { type: Date },
     isCompleted: { type: Boolean, default: false },
 
-    type: { type: String, enum: ['phone', 'home_visit', 'clinic'], default: 'home_visit' },
+    type: { type: String, enum: ['phone', 'telephonic', 'home_visit', 'clinic', 'visit', 'other'], default: 'home_visit' },
     notes: { type: String },
     outcome: { type: String },
 

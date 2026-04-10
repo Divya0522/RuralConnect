@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const FollowUp = require('../models/FollowUp');
+const Notification = require('../models/Notification');
 const protect = require('../middleware/auth');
 const authorize = require('../middleware/roles');
 const { createLog } = require('../utils/logger');
@@ -14,6 +15,11 @@ router.get('/', protect, async (req, res, next) => {
         if (caseId) query.case = caseId;
         if (isCompleted !== undefined) query.isCompleted = isCompleted === 'true';
         if (req.user.role === 'junior_doctor') query.assignedDoctor = req.user._id;
+        if (req.user.role === 'patient') {
+            const Patient = require('../models/Patient');
+            const patient = await Patient.findOne({ user: req.user._id });
+            if (patient) query.patient = patient._id;
+        }
 
         const followUps = await FollowUp.find(query)
             .populate('case', 'caseId chiefComplaint status')
@@ -30,8 +36,8 @@ router.get('/', protect, async (req, res, next) => {
 
 // POST /api/followups
 router.post('/', protect, authorize('junior_doctor', 'senior_doctor', 'admin'), [
-    body('case').notEmpty(),
-    body('patient').notEmpty(),
+    body('case').notEmpty().withMessage('Case ID is required'),
+    body('patient').notEmpty().withMessage('Patient ID is required'),
     body('scheduledDate').isISO8601().withMessage('Valid date required'),
 ], async (req, res, next) => {
     try {
@@ -39,26 +45,56 @@ router.post('/', protect, authorize('junior_doctor', 'senior_doctor', 'admin'), 
         if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
 
         const followUp = await FollowUp.create({ ...req.body, scheduledBy: req.user._id });
+
+        // Update case status to FOLLOWUP (uppercase)
         const Case = require('../models/Case');
-        await Case.findByIdAndUpdate(req.body.case, {
-            status: 'followup',
-            $push: { statusHistory: { status: 'followup', changedBy: req.user._id } },
+        const caseDoc = await Case.findById(req.body.case);
+        if (caseDoc) {
+            caseDoc.status = 'FOLLOWUP';
+            caseDoc.statusHistory.push({ status: 'FOLLOWUP', changedBy: req.user._id, note: 'Follow-up scheduled' });
+            await caseDoc.save();
+        }
+
+        // Notify assigned doctor if different from current user
+        if (req.body.assignedDoctor && req.body.assignedDoctor !== req.user._id.toString()) {
+            await Notification.create({
+                recipient: req.body.assignedDoctor,
+                sender: req.user._id,
+                type: 'followup_scheduled',
+                title: '[STAFF] Follow-up Scheduled',
+                targetRole: 'junior_doctor',
+                message: `A follow-up has been scheduled for case ${caseDoc?.caseId || req.body.case}.`,
+                relatedCase: req.body.case,
+            });
+        }
+
+        await createLog({
+            actor: req.user, action: 'CREATE_FOLLOWUP', module: 'followups',
+            targetId: followUp._id, targetModel: 'FollowUp', ipAddress: req.ip
         });
-        await createLog({ actor: req.user, action: 'CREATE_FOLLOWUP', module: 'followups', targetId: followUp._id, targetModel: 'FollowUp', ipAddress: req.ip });
         res.status(201).json({ success: true, data: followUp });
     } catch (err) { next(err); }
 });
 
-// PATCH /api/followups/:id/complete
-router.patch('/:id/complete', protect, authorize('junior_doctor', 'admin'), async (req, res, next) => {
+router.patch('/:id/complete', protect, authorize('junior_doctor', 'senior_doctor', 'admin'), async (req, res, next) => {
     try {
-        const followUp = await FollowUp.findByIdAndUpdate(req.params.id, {
-            isCompleted: true,
-            completedAt: new Date(),
-            outcome: req.body.outcome,
-        }, { new: true });
+        const followUp = await FollowUp.findById(req.params.id);
         if (!followUp) return res.status(404).json({ success: false, error: 'Follow-up not found.' });
-        await createLog({ actor: req.user, action: 'COMPLETE_FOLLOWUP', module: 'followups', targetId: followUp._id, targetModel: 'FollowUp', ipAddress: req.ip });
+
+        // Security check: Only assigned doctor or admin
+        if (req.user.role !== 'admin' && followUp.assignedDoctor?.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ success: false, error: 'Only the assigned doctor can complete this follow-up.' });
+        }
+
+        followUp.isCompleted = true;
+        followUp.completedAt = new Date();
+        followUp.outcome = req.body.outcome;
+        await followUp.save();
+
+        await createLog({
+            actor: req.user, action: 'COMPLETE_FOLLOWUP', module: 'followups',
+            targetId: followUp._id, targetModel: 'FollowUp', ipAddress: req.ip
+        });
         res.json({ success: true, data: followUp });
     } catch (err) { next(err); }
 });
